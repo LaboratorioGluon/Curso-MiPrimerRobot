@@ -1,8 +1,7 @@
-#include <stdio.h>
 
+extern "C" void app_main();
 
-int main()
+void app_main()
 {
-	printf("Hola mundo\n");
-	return 1;
+    
 }
