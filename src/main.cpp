@@ -1,11 +1,13 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <driver/gpio.h>
+#include <freertos/queue.h>
 
 constexpr gpio_num_t LED_PIN = GPIO_NUM_2;
 constexpr gpio_num_t BUTTON_PIN = GPIO_NUM_13;
 
 extern "C" void app_main();
+
 
 void app_main()
 {
@@ -29,7 +31,7 @@ void app_main()
     // Ejercicio tema 4:
     // Suponiendo que el led azul caen 2V, y que quereis que pasen 2mA
     // Que R necesitais
-    // V= R*I => R = V/I; Vesp=3.3, Vl = 2, Il = 0.002; R = (3.3-2)/0.002=650 ~ 680
+    // V= R*I => R = V/I; Vesp=3.3, Vl = 2, Il = 0.002; R = (3.3-2)/0.002=650 ~ 680 (E6)
 
     // Loop
     while(1)
@@ -42,7 +44,7 @@ void app_main()
         
         gpio_set_level(LED_PIN , !gpio_get_level(BUTTON_PIN));
 
-
+        vTaskDelay(pdMS_TO_TICKS(10));
         /*gpio_set_level(LED_PIN, 1);
         vTaskDelay(pdMS_TO_TICKS(300));
         gpio_set_level(LED_PIN, 0);
