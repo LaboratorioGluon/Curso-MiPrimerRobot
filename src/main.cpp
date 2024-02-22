@@ -7,6 +7,9 @@
 // Tema 7
 #include <driver/ledc.h>
 
+// Tema 9
+#include <driver/adc.h>
+
 
 constexpr gpio_num_t LED_PIN = GPIO_NUM_2;
 constexpr gpio_num_t BUTTON_PIN = GPIO_NUM_13;
@@ -85,8 +88,16 @@ void app_main()
     gpio_set_level(BIN1, b1);
     gpio_set_level(BIN2, b2);
 
+
+    // Tema 9: ADC
+    adc1_config_width(ADC_WIDTH_BIT_12);
+    adc1_config_channel_atten(ADC1_CHANNEL_0, ADC_ATTEN_DB_11);
+
+
     uint32_t cnt=0;
     int32_t dir=1;
+
+    uint16_t adcValue;
 
     // Loop
     while(1)
@@ -102,7 +113,7 @@ void app_main()
         vTaskDelay(pdMS_TO_TICKS(10));
         cnt += dir;
         
-        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, cnt);
+        /*ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, cnt);
         ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
         ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, cnt);
         ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1);
@@ -122,7 +133,11 @@ void app_main()
             gpio_set_level(AIN2, a2);
             gpio_set_level(BIN1, b1);
             gpio_set_level(BIN2, b2);
-        }
+        }*/
+
+        adcValue = adc1_get_raw(ADC1_CHANNEL_0);
+        printf("Value: %d\n", adcValue);
+
         /*gpio_set_level(LED_PIN, 1);
         vTaskDelay(pdMS_TO_TICKS(300));
         gpio_set_level(LED_PIN, 0);
