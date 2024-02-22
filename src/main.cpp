@@ -107,8 +107,6 @@ void app_main()
         ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, cnt);
         ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1);
 
-        motores.setSpeed(cnt, cnt)
-
         if (cnt > 320 && dir == 1)
         {
             dir = -1;
