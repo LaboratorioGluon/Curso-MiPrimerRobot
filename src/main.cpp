@@ -3,12 +3,16 @@
 #include <driver/gpio.h>
 #include <freertos/queue.h>
 #include <esp_log.h>
+#include <esp_timer.h>
 
 // Tema 7
 #include <driver/ledc.h>
 
 // Tema 9
 #include <driver/adc.h>
+
+// Tema 11
+#include "pid.h"
 
 
 constexpr gpio_num_t LED_PIN = GPIO_NUM_2;
@@ -19,8 +23,18 @@ constexpr gpio_num_t AIN2 = GPIO_NUM_33;
 constexpr gpio_num_t BIN1 = GPIO_NUM_26;
 constexpr gpio_num_t BIN2 = GPIO_NUM_27;
 
-extern "C" void app_main();
+// Tmea 10: Mux
+constexpr uint32_t NUM_SENSORS = 8;
 
+constexpr gpio_num_t S0 = GPIO_NUM_22;
+constexpr gpio_num_t S1 = GPIO_NUM_21;
+constexpr gpio_num_t S2 = GPIO_NUM_19;
+constexpr gpio_num_t S3 = GPIO_NUM_18;
+
+// Tema 11: PID
+PID pid(50.0f, 0.0f, 0.0f);
+
+extern "C" void app_main();
 
 void app_main()
 {
@@ -88,17 +102,33 @@ void app_main()
     gpio_set_level(BIN1, b1);
     gpio_set_level(BIN2, b2);
 
-
     // Tema 9: ADC
     adc1_config_width(ADC_WIDTH_BIT_12);
     adc1_config_channel_atten(ADC1_CHANNEL_0, ADC_ATTEN_DB_11);
 
+    // Tema 10: Mux
+    // Definir pines Sn
+    config.mode = GPIO_MODE_OUTPUT;
+    config.pin_bit_mask = (((uint64_t)1) << S0) |  (((uint64_t)1) << S1) |  (((uint64_t)1) << S2)|  (((uint64_t)1) << S3);
+    config.intr_type = GPIO_INTR_DISABLE;
+    config.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    config.pull_up_en = GPIO_PULLUP_DISABLE;
+    gpio_config(&config);
 
     uint32_t cnt=0;
     int32_t dir=1;
 
-    uint16_t adcValue;
+    uint16_t adcValue[NUM_SENSORS];
+    uint16_t sensorOffset = 3; // Mi sensor 0 es el C3 de la placa de expansion
+    uint16_t currentSensor = 0;
+    uint16_t currentValue = 0;
 
+    float weightened = 0;
+    float acum = 0;
+    uint64_t last_call = esp_timer_get_time();
+    uint64_t curr_time = esp_timer_get_time();
+    uint8_t first_run = 1;
+    float result = 0;
     // Loop
     while(1)
     {   
@@ -110,7 +140,8 @@ void app_main()
         
         //gpio_set_level(LED_PIN , !gpio_get_level(BUTTON_PIN));
 
-        vTaskDelay(pdMS_TO_TICKS(10));
+        //vTaskDelay(pdMS_TO_TICKS(10));
+        
         cnt += dir;
         
         /*ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, cnt);
@@ -134,14 +165,62 @@ void app_main()
             gpio_set_level(BIN1, b1);
             gpio_set_level(BIN2, b2);
         }*/
+        acum = 0;
+        weightened = 0;
+        printf("LineData: ");
+        for( uint32_t i = 0; i < NUM_SENSORS; i++)
+        {
+            currentSensor = sensorOffset + i;
+            gpio_set_level(S0, currentSensor & 0x1U );
+            gpio_set_level(S1, (currentSensor>>1) & 0x1U );
+            gpio_set_level(S2, (currentSensor>>2) & 0x1U );
+            gpio_set_level(S3, (currentSensor>>3) & 0x1U );
 
-        adcValue = adc1_get_raw(ADC1_CHANNEL_0);
-        printf("Value: %d\n", adcValue);
+            currentValue = adc1_get_raw(ADC1_CHANNEL_0); 
+            adcValue[i] = currentValue;
+
+            if(currentValue > 2048)
+            {
+                weightened += ((float)currentValue)*((float)i - ((NUM_SENSORS-1)/2.0f))*100.0f;
+                acum += currentValue;
+            }
+
+            printf("%d ", adcValue[i]);
+        }
+
+        printf("%.2f ", weightened/acum);
+
+
+        if(!first_run)
+        {
+            curr_time = esp_timer_get_time();
+            result = pid.update(weightened/acum, curr_time-last_call);
+            result = result / 100.0f;
+            
+            if (result > 100){
+                result = 100;
+            }
+        }
+        printf("%.2f ", result);
+        printf("\n");
+        last_call = curr_time;
+        first_run = 0;
+
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 300+(int)result);
+        ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, 300-(int)result);
+        ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1);
+
+        // Tema 11: PID
+        // Calcular valor de la linea:
+
 
         /*gpio_set_level(LED_PIN, 1);
         vTaskDelay(pdMS_TO_TICKS(300));
         gpio_set_level(LED_PIN, 0);
         vTaskDelay(pdMS_TO_TICKS(300));*/
+
+        vTaskDelay(2);
     }
     
 }
