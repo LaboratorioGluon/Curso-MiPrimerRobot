@@ -14,6 +14,8 @@
 // Tema 11
 #include "pid.h"
 
+#include "sensorArray.h"
+
 
 constexpr gpio_num_t LED_PIN = GPIO_NUM_2;
 constexpr gpio_num_t BUTTON_PIN = GPIO_NUM_13;
@@ -24,12 +26,24 @@ constexpr gpio_num_t BIN1 = GPIO_NUM_26;
 constexpr gpio_num_t BIN2 = GPIO_NUM_27;
 
 // Tmea 10: Mux
-constexpr uint32_t NUM_SENSORS = 8;
 
+constexpr uint32_t NUM_SENSORS = 8;
+/*
 constexpr gpio_num_t S0 = GPIO_NUM_22;
 constexpr gpio_num_t S1 = GPIO_NUM_21;
 constexpr gpio_num_t S2 = GPIO_NUM_19;
 constexpr gpio_num_t S3 = GPIO_NUM_18;
+*/
+
+MuxConfiguration muxConfig = 
+{
+    .S0 =GPIO_NUM_22,
+    .S1 =GPIO_NUM_21,
+    .S2 =GPIO_NUM_19,
+    .S3 =GPIO_NUM_18,
+};
+
+sensorArray array(muxConfig, NUM_SENSORS, ADC1_CHANNEL_0);
 
 // Tema 11: PID
 PID pid(50.0f, 0.0f, 0.0f);
@@ -39,6 +53,8 @@ extern "C" void app_main();
 void app_main()
 {
 
+    array.init();
+
     // Setup
     gpio_config_t config;
     config.mode = GPIO_MODE_OUTPUT;
@@ -47,6 +63,8 @@ void app_main()
     config.pull_down_en = GPIO_PULLDOWN_DISABLE;
     config.pull_up_en = GPIO_PULLUP_DISABLE;
     gpio_config(&config);
+
+    
 
     // Ejercicio tema 4:
     // Init GPIO El que querais as INPUT
@@ -102,100 +120,32 @@ void app_main()
     gpio_set_level(BIN1, b1);
     gpio_set_level(BIN2, b2);
 
-    // Tema 9: ADC
-    adc1_config_width(ADC_WIDTH_BIT_12);
-    adc1_config_channel_atten(ADC1_CHANNEL_0, ADC_ATTEN_DB_11);
-
-    // Tema 10: Mux
-    // Definir pines Sn
-    config.mode = GPIO_MODE_OUTPUT;
-    config.pin_bit_mask = (((uint64_t)1) << S0) |  (((uint64_t)1) << S1) |  (((uint64_t)1) << S2)|  (((uint64_t)1) << S3);
-    config.intr_type = GPIO_INTR_DISABLE;
-    config.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    config.pull_up_en = GPIO_PULLUP_DISABLE;
-    gpio_config(&config);
 
     uint32_t cnt=0;
     int32_t dir=1;
 
-    uint16_t adcValue[NUM_SENSORS];
-    uint16_t sensorOffset = 3; // Mi sensor 0 es el C3 de la placa de expansion
-    uint16_t currentSensor = 0;
-    uint16_t currentValue = 0;
 
-    float weightened = 0;
-    float acum = 0;
     uint64_t last_call = esp_timer_get_time();
     uint64_t curr_time = esp_timer_get_time();
     uint8_t first_run = 1;
     float result = 0;
+
+    float lastLineValue;
+
     // Loop
     while(1)
     {   
-        
-        // Ejercicio tema 4
-        // Set LED_PIN to INPUT value.
-        // If INPUT == 1 then LED_PIN = 1
-        // If INPUT == 0 then LED_PIN = 0
-        
-        //gpio_set_level(LED_PIN , !gpio_get_level(BUTTON_PIN));
 
-        //vTaskDelay(pdMS_TO_TICKS(10));
-        
         cnt += dir;
-        
-        /*ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, cnt);
-        ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
-        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, cnt);
-        ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1);
 
-        if (cnt > 320 && dir == 1)
-        {
-            dir = -1;
-        }
-        else if(cnt == 50 && dir == -1)
-        {
-            dir = 1;
-            a1 = (a1==1)?0:1;
-            b1 = (b1==1)?0:1;
-            a2 = (a2==1)?0:1;
-            b2 = (b2==1)?0:1;
-            gpio_set_level(AIN1, a1);
-            gpio_set_level(AIN2, a2);
-            gpio_set_level(BIN1, b1);
-            gpio_set_level(BIN2, b2);
-        }*/
-        acum = 0;
-        weightened = 0;
-        printf("LineData: ");
-        for( uint32_t i = 0; i < NUM_SENSORS; i++)
-        {
-            currentSensor = sensorOffset + i;
-            gpio_set_level(S0, currentSensor & 0x1U );
-            gpio_set_level(S1, (currentSensor>>1) & 0x1U );
-            gpio_set_level(S2, (currentSensor>>2) & 0x1U );
-            gpio_set_level(S3, (currentSensor>>3) & 0x1U );
-
-            currentValue = adc1_get_raw(ADC1_CHANNEL_0); 
-            adcValue[i] = currentValue;
-
-            if(currentValue > 2048)
-            {
-                weightened += ((float)currentValue)*((float)i - ((NUM_SENSORS-1)/2.0f))*100.0f;
-                acum += currentValue;
-            }
-
-            printf("%d ", adcValue[i]);
-        }
-
-        printf("%.2f ", weightened/acum);
-
+        lastLineValue = array.getLinePosition();
 
         if(!first_run)
         {
             curr_time = esp_timer_get_time();
-            result = pid.update(weightened/acum, curr_time-last_call);
+            result = pid.update(lastLineValue, curr_time-last_call);
             result = result / 100.0f;
+            
             
             if (result > 100){
                 result = 100;
@@ -210,6 +160,7 @@ void app_main()
         ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
         ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, 300-(int)result);
         ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1);
+
 
         // Tema 11: PID
         // Calcular valor de la linea:
